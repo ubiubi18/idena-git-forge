@@ -1,0 +1,12 @@
+title = "Idena forge secret scanning"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Deterministic public DID used by source tests and the offline demo"
+targetRules = ["generic-api-key"]
+regexTarget = "line"
+regexes = [
+  '''did:key:z6Mko9uYxDPk2BetRRziLz1xHN8nR5zQWdNjytKNDPcygHJP''',
+]

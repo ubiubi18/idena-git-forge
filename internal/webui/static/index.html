@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light">
+    <title>Idena x Radicle</title>
+    <link rel="stylesheet" href="/styles.css">
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="wordmark">
+        <span class="mark" aria-hidden="true">IG</span>
+        <span>Idena x Radicle</span>
+      </div>
+      <div class="topbar-actions">
+        <div id="headline" class="checkpoint-headline">Loading checkpoint</div>
+        <a class="static-link" href="/standalone.html">Static IPFS preview</a>
+      </div>
+    </header>
+
+    <main class="layout">
+      <aside class="rail" aria-label="Radicle patches">
+        <div class="rail-heading">
+          <span>Radicle repositories</span>
+          <span id="repo-count" class="count">0</span>
+        </div>
+        <div id="repo-list" class="repo-list"></div>
+      </aside>
+
+      <section class="workspace">
+        <div class="empty-state" id="empty-state">
+          <div class="empty-symbol" aria-hidden="true">IG</div>
+          <h1>No checkpoint loaded</h1>
+          <p>The reducer has not produced a reviewed Radicle patch.</p>
+        </div>
+
+        <article id="pr-view" hidden>
+          <div class="breadcrumb" id="breadcrumb"></div>
+          <div class="title-row">
+            <div>
+              <h1 id="pr-title"></h1>
+              <div class="revision-line">
+                <span>Revision</span>
+                <code id="revision"></code>
+              </div>
+            </div>
+            <span id="outcome" class="status"></span>
+          </div>
+
+          <dl class="meta-grid">
+            <div><dt>Radicle author</dt><dd id="author"></dd><dd id="idena-author" class="secondary-author"></dd></div>
+            <div><dt>Base</dt><dd><code id="base"></code></dd></div>
+            <div><dt>Head</dt><dd><code id="head"></code></dd></div>
+            <div><dt>Checkpoint</dt><dd id="checkpoint"></dd></div>
+          </dl>
+
+          <section class="diff-section" aria-labelledby="diff-heading">
+            <div class="section-heading">
+              <h2 id="diff-heading">Exact diff</h2>
+              <span class="quiet">Content addressed</span>
+            </div>
+            <pre id="diff" class="diff">Loading diff...</pre>
+          </section>
+
+          <section aria-labelledby="ballots-heading">
+            <div class="section-heading">
+              <h2 id="ballots-heading">Radicle reviews</h2>
+              <span id="ballot-summary" class="quiet"></span>
+            </div>
+            <div class="ballot-table">
+              <div class="table-head"><span>Identity</span><span>Choice</span><span>Stake</span><span>Weight</span></div>
+              <div id="ballots"></div>
+            </div>
+          </section>
+        </article>
+      </section>
+
+      <aside class="evidence" aria-label="Checkpoint evidence">
+        <section>
+          <h2>Governance</h2>
+          <dl class="evidence-list">
+            <div><dt>Repository state</dt><dd id="repository-state">-</dd></div>
+            <div><dt>Eligible Idena voters</dt><dd id="voters">-</dd></div>
+            <div><dt>Approvals</dt><dd id="approvals">-</dd></div>
+            <div><dt>Identity majority</dt><dd id="identity-majority">-</dd></div>
+            <div><dt>Combined stake</dt><dd id="combined-stake">-</dd></div>
+            <div><dt>Approval weight</dt><dd id="approval-weight">-</dd></div>
+            <div><dt>Rejection weight</dt><dd id="rejection-weight">-</dd></div>
+            <div><dt>Stake majority</dt><dd id="stake-majority">-</dd></div>
+            <div><dt>Prune after epoch</dt><dd id="prune-after">-</dd></div>
+          </dl>
+        </section>
+        <section>
+          <h2>Availability</h2>
+          <div id="availability" class="availability"></div>
+        </section>
+        <section>
+          <h2>Checkpoint result</h2>
+          <p id="reason" class="reason"></p>
+          <code id="input-digest" class="digest"></code>
+        </section>
+      </aside>
+    </main>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

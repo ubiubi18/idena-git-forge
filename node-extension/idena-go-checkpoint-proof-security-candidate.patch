@@ -1,0 +1,391 @@
+diff --git a/api/dna_api.go b/api/dna_api.go
+index 975e4db..d12d09b 100644
+--- a/api/dna_api.go
++++ b/api/dna_api.go
+@@ -7,6 +7,7 @@ import (
+ 	"encoding/hex"
+ 	"fmt"
+ 	mapset "github.com/deckarep/golang-set"
++	"github.com/golang/protobuf/proto"
+ 	"github.com/idena-network/idena-go/blockchain"
+ 	"github.com/idena-network/idena-go/blockchain/attachments"
+ 	"github.com/idena-network/idena-go/blockchain/types"
+@@ -18,9 +19,11 @@ import (
+ 	"github.com/idena-network/idena-go/core/profile"
+ 	"github.com/idena-network/idena-go/core/state"
+ 	"github.com/idena-network/idena-go/crypto"
++	models "github.com/idena-network/idena-go/protobuf"
+ 	"github.com/ipfs/go-cid"
+ 	"github.com/pkg/errors"
+ 	"github.com/shopspring/decimal"
++	"math/big"
+ 	"time"
+ )
+ 
+@@ -786,6 +789,242 @@ func (api *DnaApi) SignatureAddress(args SignatureAddressArgs) (common.Address,
+ 	return addr, nil
+ }
+ 
++type EpochIdentityProofArgs struct {
++	Height    uint64         `json:"height"`
++	BlockHash common.Hash    `json:"blockHash"`
++	Address   common.Address `json:"address"`
++}
++
++type EpochCheckpointArgs struct {
++	Height    uint64      `json:"height"`
++	BlockHash common.Hash `json:"blockHash"`
++}
++
++type EpochCheckpoint struct {
++	Height     uint64          `json:"height"`
++	BlockHash  common.Hash     `json:"blockHash"`
++	StateRoot  common.Hash     `json:"stateRoot"`
++	Epoch      uint16          `json:"epoch"`
++	EpochProof EpochValueProof `json:"epochProof"`
++}
++
++// EpochCheckpoint returns the committed post-transition epoch, state root, and
++// portable global-state membership proof for one canonical ValidationFinished
++// block. The saved proof remains verifiable after historical state pruning.
++func (api *DnaApi) EpochCheckpoint(args EpochCheckpointArgs) (*EpochCheckpoint, error) {
++	header := api.bc.GetBlockHeaderByHeight(args.Height)
++	if header == nil {
++		return nil, errors.Errorf("block %d not found", args.Height)
++	}
++	if args.BlockHash == (common.Hash{}) {
++		return nil, errors.New("block hash is required")
++	}
++	if header.Hash() != args.BlockHash {
++		return nil, errors.New("block hash does not match canonical block at height")
++	}
++	if !header.Flags().HasFlag(types.ValidationFinished) {
++		return nil, errors.New("requested block is not a ValidationFinished checkpoint")
++	}
++	appState, err := api.baseApi.engine.ReadonlyAppStateAt(args.Height)
++	if err != nil {
++		return nil, errors.Wrap(err, "load historical state")
++	}
++	if appState.State.Root() != header.Root() {
++		return nil, errors.New("historical state root does not match block header")
++	}
++	return createEpochCheckpoint(appState.State, args.Height, header.Hash())
++}
++
++type EpochIdentityProofLeaf struct {
++	Key       hexutil.Bytes `json:"key"`
++	ValueHash hexutil.Bytes `json:"valueHash"`
++	Version   uint64        `json:"version"`
++}
++
++type EpochIdentityProofItem struct {
++	Height  int16         `json:"height"`
++	Size    uint64        `json:"size"`
++	Version uint64        `json:"version"`
++	Left    hexutil.Bytes `json:"left,omitempty"`
++	Right   hexutil.Bytes `json:"right,omitempty"`
++}
++
++type EpochValueProof struct {
++	Value hexutil.Bytes            `json:"value"`
++	Leaf  EpochIdentityProofLeaf   `json:"leaf"`
++	Path  []EpochIdentityProofItem `json:"path"`
++}
++
++func createEpochCheckpoint(stateDB *state.StateDB, height uint64, blockHash common.Hash) (*EpochCheckpoint, error) {
++	proofBytes, err := stateDB.GetGlobalWithProof()
++	if err != nil {
++		return nil, errors.Wrap(err, "create global epoch proof")
++	}
++	proof, err := decodeValueProof(proofBytes, "global epoch")
++	if err != nil {
++		return nil, err
++	}
++	global := new(state.Global)
++	if err := global.FromBytes(proof.Value); err != nil {
++		return nil, errors.Wrap(err, "decode global epoch state")
++	}
++	if global.Epoch != stateDB.Epoch() {
++		return nil, errors.New("global epoch proof differs from historical state")
++	}
++	return &EpochCheckpoint{
++		Height:     height,
++		BlockHash:  blockHash,
++		StateRoot:  stateDB.Root(),
++		Epoch:      global.Epoch,
++		EpochProof: valueProofResponse(proof),
++	}, nil
++}
++
++type EpochIdentityProof struct {
++	Height    uint64                   `json:"height"`
++	BlockHash common.Hash              `json:"blockHash"`
++	StateRoot common.Hash              `json:"stateRoot"`
++	Address   common.Address           `json:"address"`
++	Value     hexutil.Bytes            `json:"value"`
++	Stake     string                   `json:"stake"`
++	State     uint16                   `json:"state"`
++	StateName string                   `json:"stateName"`
++	Leaf      EpochIdentityProofLeaf   `json:"leaf"`
++	Path      []EpochIdentityProofItem `json:"path"`
++}
++
++// EpochIdentityProof returns a historical membership proof for the identity
++// record committed by a ValidationFinished block. It is read-only and
++// deliberately bounded to the node's retained state window.
++func (api *DnaApi) EpochIdentityProof(args EpochIdentityProofArgs) (*EpochIdentityProof, error) {
++	header := api.bc.GetBlockHeaderByHeight(args.Height)
++	if header == nil {
++		return nil, errors.Errorf("block %d not found", args.Height)
++	}
++	if args.BlockHash == (common.Hash{}) {
++		return nil, errors.New("block hash is required")
++	}
++	if header.Hash() != args.BlockHash {
++		return nil, errors.New("block hash does not match canonical block at height")
++	}
++	if !header.Flags().HasFlag(types.ValidationFinished) {
++		return nil, errors.New("requested block is not a ValidationFinished checkpoint")
++	}
++	appState, err := api.baseApi.engine.ReadonlyAppStateAt(args.Height)
++	if err != nil {
++		return nil, errors.Wrap(err, "load historical state")
++	}
++	stateRoot := appState.State.Root()
++	if stateRoot != header.Root() {
++		return nil, errors.New("historical state root does not match block header")
++	}
++	return createEpochIdentityProof(appState.State, args.Height, header.Hash(), args.Address)
++}
++
++func createEpochIdentityProof(stateDB *state.StateDB, height uint64, blockHash common.Hash, address common.Address) (*EpochIdentityProof, error) {
++	proofBytes, err := stateDB.GetIdentityWithProof(address)
++	if err != nil {
++		return nil, errors.Wrap(err, "create identity proof")
++	}
++	proof, err := decodeValueProof(proofBytes, "identity")
++	if err != nil {
++		return nil, err
++	}
++	identity := new(state.Identity)
++	if err := identity.FromBytes(proof.Value); err != nil {
++		return nil, errors.Wrap(err, "decode identity state")
++	}
++	stake := new(big.Int)
++	if identity.Stake != nil {
++		stake.Set(identity.Stake)
++	}
++	res := &EpochIdentityProof{
++		Height:    height,
++		BlockHash: blockHash,
++		StateRoot: stateDB.Root(),
++		Address:   address,
++		Value:     proof.Value,
++		Stake:     stake.String(),
++		State:     uint16(identity.State),
++		StateName: identityStateName(identity.State),
++		Leaf: EpochIdentityProofLeaf{
++			Key:       proof.Leaf.Key,
++			ValueHash: proof.Leaf.ValueHash,
++			Version:   proof.Leaf.Version,
++		},
++		Path: make([]EpochIdentityProofItem, 0, len(proof.Proof)),
++	}
++	for _, item := range proof.Proof {
++		res.Path = append(res.Path, EpochIdentityProofItem{
++			Height:  int16(item.Height),
++			Size:    item.Size,
++			Version: item.Version,
++			Left:    item.Left,
++			Right:   item.Right,
++		})
++	}
++	return res, nil
++}
++
++func decodeValueProof(proofBytes []byte, label string) (*models.ValueWithProof, error) {
++	if len(proofBytes) == 0 {
++		return nil, errors.Errorf("%s does not exist at checkpoint", label)
++	}
++	proof := new(models.ValueWithProof)
++	if err := proto.Unmarshal(proofBytes, proof); err != nil {
++		return nil, errors.Wrapf(err, "decode %s proof", label)
++	}
++	if proof.Leaf == nil {
++		return nil, errors.Errorf("%s proof has no leaf", label)
++	}
++	return proof, nil
++}
++
++func valueProofResponse(proof *models.ValueWithProof) EpochValueProof {
++	result := EpochValueProof{
++		Value: proof.Value,
++		Leaf: EpochIdentityProofLeaf{
++			Key:       proof.Leaf.Key,
++			ValueHash: proof.Leaf.ValueHash,
++			Version:   proof.Leaf.Version,
++		},
++		Path: make([]EpochIdentityProofItem, 0, len(proof.Proof)),
++	}
++	for _, item := range proof.Proof {
++		result.Path = append(result.Path, EpochIdentityProofItem{
++			Height:  int16(item.Height),
++			Size:    item.Size,
++			Version: item.Version,
++			Left:    item.Left,
++			Right:   item.Right,
++		})
++	}
++	return result
++}
++
++func identityStateName(value state.IdentityState) string {
++	switch value {
++	case state.Invite:
++		return "Invite"
++	case state.Candidate:
++		return "Candidate"
++	case state.Verified:
++		return "Verified"
++	case state.Suspended:
++		return "Suspended"
++	case state.Killed:
++		return "Killed"
++	case state.Zombie:
++		return "Zombie"
++	case state.Newbie:
++		return "Newbie"
++	case state.Human:
++		return "Human"
++	default:
++		return "Undefined"
++	}
++}
++
+ func signatureHash(value string, format SignedDataFormat) (common.Hash, error) {
+ 	switch format {
+ 	case DoubleHash:
+diff --git a/consensus/engine.go b/consensus/engine.go
+index 4fb8ec2..c90ae5b 100644
+--- a/consensus/engine.go
++++ b/consensus/engine.go
+@@ -111,7 +111,17 @@ func (engine *Engine) GetProcess() string {
+ }
+ 
+ func (engine *Engine) ReadonlyAppState() (*appstate.AppState, error) {
+-	return engine.appState.Readonly(engine.chain.Head.Height())
++	return engine.ReadonlyAppStateAt(engine.chain.Head.Height())
++}
++
++// ReadonlyAppStateAt returns the committed state at a historical block height.
++// The node retains a bounded window of versions, so callers must handle a
++// missing historical version.
++func (engine *Engine) ReadonlyAppStateAt(height uint64) (*appstate.AppState, error) {
++	if height > engine.chain.Head.Height() {
++		return nil, errors.New("requested state height is ahead of the chain head")
++	}
++	return engine.appState.Readonly(height)
+ }
+ 
+ func (engine *Engine) AppStateForCheck() (*appstate.AppState, error) {
+diff --git a/core/state/statedb.go b/core/state/statedb.go
+index c3374ff..777ee93 100644
+--- a/core/state/statedb.go
++++ b/core/state/statedb.go
+@@ -1632,6 +1632,12 @@ func (s *StateDB) GetIdentityWithProof(addr common.Address) ([]byte, error) {
+ 	return s.tree.GetImmutable().GetWithProof(StateDbKeys.IdentityKey(addr))
+ }
+ 
++// GetGlobalWithProof returns the committed global state value and its IAVL
++// membership proof at this StateDB version.
++func (s *StateDB) GetGlobalWithProof() ([]byte, error) {
++	return s.tree.GetImmutable().GetWithProof(StateDbKeys.GlobalKey())
++}
++
+ func (s *StateDB) IterateOverIdentities(callback func(addr common.Address, identity Identity)) {
+ 	s.IterateIdentities(func(key []byte, value []byte) bool {
+ 		if key == nil {
+diff --git a/api/epoch_identity_proof_test.go b/api/epoch_identity_proof_test.go
+new file mode 100644
+index 0000000..65ad9fc
+--- /dev/null
++++ b/api/epoch_identity_proof_test.go
+@@ -0,0 +1,77 @@
++package api
++
++import (
++	"math/big"
++	"testing"
++
++	"github.com/idena-network/idena-go/common"
++	"github.com/idena-network/idena-go/core/state"
++	"github.com/stretchr/testify/require"
++	dbm "github.com/tendermint/tm-db"
++)
++
++func TestCreateEpochIdentityProofFromCommittedState(t *testing.T) {
++	stateDB, err := state.NewLazy(dbm.NewMemDB())
++	require.NoError(t, err)
++	address := common.HexToAddress("0x1111111111111111111111111111111111111111")
++	stake, ok := new(big.Int).SetString("500000000000000000000000", 10)
++	require.True(t, ok)
++	stateDB.AddStake(address, stake)
++	stateDB.SetState(address, state.Human)
++	stateDB.Precommit(true)
++	_, _, err = stateDB.CommitTree(42)
++	require.NoError(t, err)
++
++	readonly, err := stateDB.Readonly(42)
++	require.NoError(t, err)
++	blockHash := common.HexToHash("0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
++	proof, err := createEpochIdentityProof(readonly, 42, blockHash, address)
++	require.NoError(t, err)
++	require.Equal(t, uint64(42), proof.Height)
++	require.Equal(t, blockHash, proof.BlockHash)
++	require.Equal(t, readonly.Root(), proof.StateRoot)
++	require.Equal(t, address, proof.Address)
++	require.Equal(t, stake.String(), proof.Stake)
++	require.Equal(t, uint16(state.Human), proof.State)
++	require.Equal(t, "Human", proof.StateName)
++	require.NotEmpty(t, proof.Value)
++	require.Equal(t, state.StateDbKeys.IdentityKey(address), []byte(proof.Leaf.Key))
++}
++
++func TestCreateEpochIdentityProofWithZeroStake(t *testing.T) {
++	stateDB, err := state.NewLazy(dbm.NewMemDB())
++	require.NoError(t, err)
++	address := common.HexToAddress("0x2222222222222222222222222222222222222222")
++	stateDB.SetState(address, state.Newbie)
++	stateDB.Precommit(true)
++	_, _, err = stateDB.CommitTree(42)
++	require.NoError(t, err)
++
++	readonly, err := stateDB.Readonly(42)
++	require.NoError(t, err)
++	proof, err := createEpochIdentityProof(readonly, 42, common.Hash{}, address)
++	require.NoError(t, err)
++	require.Equal(t, "0", proof.Stake)
++	require.Equal(t, uint16(state.Newbie), proof.State)
++}
++
++func TestCreateEpochCheckpointFromCommittedState(t *testing.T) {
++	stateDB, err := state.NewLazy(dbm.NewMemDB())
++	require.NoError(t, err)
++	stateDB.SetGlobalEpoch(43)
++	stateDB.Precommit(true)
++	_, _, err = stateDB.CommitTree(42)
++	require.NoError(t, err)
++
++	readonly, err := stateDB.Readonly(42)
++	require.NoError(t, err)
++	blockHash := common.HexToHash("0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")
++	checkpoint, err := createEpochCheckpoint(readonly, 42, blockHash)
++	require.NoError(t, err)
++	require.Equal(t, uint64(42), checkpoint.Height)
++	require.Equal(t, blockHash, checkpoint.BlockHash)
++	require.Equal(t, readonly.Root(), checkpoint.StateRoot)
++	require.Equal(t, uint16(43), checkpoint.Epoch)
++	require.Equal(t, state.StateDbKeys.GlobalKey(), []byte(checkpoint.EpochProof.Leaf.Key))
++	require.NotEmpty(t, checkpoint.EpochProof.Value)
++}
+

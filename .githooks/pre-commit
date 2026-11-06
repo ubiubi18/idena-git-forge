@@ -1,0 +1,5 @@
+#!/bin/sh
+set -eu
+
+repo=$(git rev-parse --show-toplevel)
+exec "$repo/scripts/secret-scan.sh" --staged

@@ -1,0 +1,63 @@
+{
+  "schema": "idena-radicle/public-node-extension-build-evidence/v1",
+  "status": "reproducible-unreleased-candidate",
+  "source": {
+    "repository": "https://github.com/ubiubi18/idena-go.git",
+    "checkoutCommit": "3359e6a1ed7bc3ac0c3ebe231ed54fa827fd263e",
+    "patchPath": "idena-go-checkpoint-proof-security-candidate.patch",
+    "patchSha256": "aebf20840bdf5a705794c2dac25eaf01e37a50a8e5fa66754e4becba4ac13bb0",
+    "patchBytes": 13670
+  },
+  "build": {
+    "platform": "linux/amd64",
+    "builderImage": "golang:1.27.3-bookworm@sha256:d9b6a1beb9474adc2a1ce842573639b44b2a0dd49b6669f51d3821baf9ec37c9",
+    "builderLinuxAmd64Manifest": "sha256:e482b31b5d30c31f9e495f4b8cbdf41429b2d74955dfbcd9c0a904483d738390",
+    "runtimeImage": "debian:bookworm-slim@sha256:60eac759739651111db372c07be67863818726f754804b8707c90979bda511df",
+    "runtimeLinuxAmd64Manifest": "sha256:1def178129dfb5f24db43afbf2fcac04530012e3264ba4ff81c71184e17a9ee4",
+    "goVersion": "go1.27.3 linux/amd64",
+    "goToolchain": "local",
+    "cgoEnabled": true,
+    "gccVersion": "12.2.0",
+    "glibcVersion": "2.36",
+    "commands": [
+      "go mod download",
+      "go mod verify",
+      "go test -count=1 ./api ./consensus ./core/state",
+      "CGO_ENABLED=1 go build -mod=readonly -trimpath -buildvcs=false -ldflags=\"-s -w -X main.version=1.1.2\" -o idena-go-1.1.2-security-checkpoint-linux-amd64 ."
+    ]
+  },
+  "verification": {
+    "cleanSourceExports": 2,
+    "separateBuildCaches": true,
+    "modulesVerifiedBothRuns": true,
+    "focusedTestsPassedBothRuns": true,
+    "byteIdenticalOutputs": true,
+    "sameOperatorReproduction": true,
+    "independentSecondPartyReproduction": false,
+    "isolatedVersionProbe": {
+      "command": "/artifact/idena-go --version",
+      "result": "idena-go version 1.1.2",
+      "network": "none",
+      "rootFilesystem": "read-only",
+      "nodeStarted": false,
+      "datadirCreated": false
+    }
+  },
+  "artifact": {
+    "includedInRepository": false,
+    "name": "idena-go-1.1.2-security-checkpoint-linux-amd64",
+    "sha256": "5e818d00cb916c00276e3a0d27f0a8c909c00afad78bf65a1253a37c0f09a75e",
+    "bytes": 99341392,
+    "mode": "0755",
+    "format": "ELF 64-bit LSB executable, x86-64, dynamically linked, stripped",
+    "interpreter": "/lib64/ld-linux-x86-64.so.2",
+    "buildIdSha1": "83517d8f3eb2e0cd742a308b323e5c4e962d9964",
+    "reportedVersion": "idena-go version 1.1.2"
+  },
+  "limitations": [
+    "The proof patch is not committed in the source repository named above.",
+    "The compatibility lock remains a candidate and is not advanced for this patch.",
+    "This file is build evidence, not release or deployment approval.",
+    "Operational deployment details are intentionally excluded from the public handoff."
+  ]
+}

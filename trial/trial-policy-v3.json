@@ -1,0 +1,81 @@
+{
+  "schema": "idena-radicle/trial-policy/v3",
+  "sourceVersion": "0.6.3",
+  "reducerPolicy": "idena-radicle/reducer-policy/v3:sha256:4dd6a297acaa7e82ce83bf5b335dfd03196e51a29894127db893fedbc203a4db",
+  "status": "template-unbound-no-live-identifiers",
+  "network": "Idena mainnet",
+  "repository": null,
+  "authority": {
+    "nodeCountHasGovernanceWeight": false,
+    "operatorCountHasGovernanceWeight": false,
+    "builderHasSpecialVotingAuthority": false,
+    "eligibleIdentityStates": [
+      "Newbie",
+      "Verified",
+      "Human"
+    ],
+    "eligibleVoterSet": "Every identity with a valid Newbie, Verified, or Human proof at the canonical ValidationFinished checkpoint",
+    "minimumDistinctVoters": 3,
+    "minimumApprovals": 2,
+    "strictIdentityApprovalMajority": false,
+    "identityCountPurpose": "Admission plus participation and deliberation floors; no numerical-majority gate, standalone one-person-one-vote term, or direct candidate-ranking weight",
+    "identityVotingPower": "Each eligible identity supplies at most one distinct-voter slot and, when approving, one approval slot; decision power otherwise comes from the sum of per-identity sublinear stake weights",
+    "combinedRawParticipatingStakeMinimumIdna": "500000",
+    "combinedStakeCountsApprovalsAndRejections": true,
+    "individualStakeMinimumIdna": "0",
+    "strictWeightedApprovalMajority": true,
+    "weight": "floor(rawStake^(9/10)) using deterministic integer arithmetic",
+    "stakeVotingPowerShape": "monotone nondecreasing and sublinear after deterministic integer flooring",
+    "fixedTotalStakePartitionEffect": "For total stake S split evenly across n valid identities, summed weight is approximately n^0.1 * S^0.9 before integer flooring; this is a positive but sublinear identity-count effect",
+    "sybilBoundary": "Valid identities cannot create weight without checkpoint stake or replace the combined raw-stake threshold, but stake splitting across valid identities gives a limited sublinear weight advantage",
+    "tieApproves": false,
+    "voteBinding": "One exact Radicle revision; changing the revision requires new ballots"
+  },
+  "decisionExamples": [
+    {
+      "case": "one 1000000-iDNA approval and three 10000-iDNA rejections",
+      "result": "reject",
+      "reason": "the ballot has only one approval and does not satisfy minimumApprovals"
+    },
+    {
+      "case": "two approvals and two or more rejections, with at least 500000 iDNA combined raw stake and strict approval weighted majority",
+      "result": "approve if all non-ballot gates pass",
+      "reason": "identity numerical majority is not a decision gate"
+    }
+  ],
+  "candidateOrdering": [
+    "higher approval-minus-rejection integer weight",
+    "higher approval integer weight",
+    "higher combined participating raw stake",
+    "earlier canonical merge-request anchor",
+    "lexicographically smaller exact revision ID",
+    "lexicographically smaller Radicle patch ID"
+  ],
+  "replication": {
+    "minimumRecordedNodeViews": 3,
+    "sameOperatorAllowed": true,
+    "operatorIndependenceRequired": false,
+    "sharedOperatorFailureDomainDisclosed": true,
+    "requiredRoles": [
+      {
+        "label": "publisher",
+        "role": "publish and retrieve the exact repository action and bundle",
+        "checkpointProofRpcRequired": false
+      },
+      {
+        "label": "checkpoint-observer-a",
+        "role": "observer, checkpoint-proof RPC, Idena-IPFS replica",
+        "checkpointProofRpcRequired": true
+      },
+      {
+        "label": "checkpoint-observer-b",
+        "role": "observer, checkpoint-proof RPC, Idena-IPFS replica",
+        "checkpointProofRpcRequired": true
+      }
+    ],
+    "additionalProofViewsSupportedBySourceVersion": true,
+    "configuredReplicaDisagreementFailsClosed": true
+  },
+  "activationCheckpoint": null,
+  "evidenceBoundary": "This privacy-safe template carries no live repository, identity, checkpoint, signature, CID, vote, transaction, node, or operator identifiers. Binding it to a deployment requires a separately reviewed exact-hash plan and does not authorize signing, broadcasting, pinning, posting, node changes, or private-key access."
+}
